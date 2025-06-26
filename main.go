@@ -15,6 +15,21 @@ func countLines(s string) int {
 	return len(strings.Split(s, "\n"))
 }
 
+// Returns the count of lines added and removed (inserted/deleted lines only)
+func diffLineCounts(orig, updated string) (added, removed int) {
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(orig, updated, false)
+	for _, d := range diffs {
+		switch d.Type {
+		case diffmatchpatch.DiffInsert:
+			added += countLines(d.Text)
+		case diffmatchpatch.DiffDelete:
+			removed += countLines(d.Text)
+		}
+	}
+	return
+}
+
 func colorDiff(orig, updated string) string {
 	dmp := diffmatchpatch.New()
 	diffs := dmp.DiffMain(orig, updated, false)
@@ -47,13 +62,17 @@ func main() {
 	bottom := tview.NewTextView().
 		SetDynamicColors(true).
 		SetChangedFunc(func() { app.Draw() })
-	bottom.SetBorder(true).SetTitle(` [red]Removed Text[-] |  [green]Added Text[-]  | Delete to Clear `)
+	bottom.SetBorder(true).SetTitle(` [red]Removed Lines[-] |  [green]Added Lines[-]  | Delete to Clear `)
 
 	updatePanels := func() {
 		origContent := leftArea.GetText()
 		updatedContent := rightArea.GetText()
 		leftArea.SetTitle(fmt.Sprintf(" Original (Lines: %d) ", countLines(origContent)))
 		rightArea.SetTitle(fmt.Sprintf(" Updated (Lines: %d) ", countLines(updatedContent)))
+
+		added, removed := diffLineCounts(origContent, updatedContent)
+		legend := fmt.Sprintf("[red]Removed Lines: %d[-] | [green]Added Lines: %d[-]  | Delete to Clear", removed, added)
+		bottom.SetTitle(" " + legend + " ")
 		bottom.SetText(colorDiff(origContent, updatedContent))
 	}
 
