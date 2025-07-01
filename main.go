@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -86,67 +87,71 @@ func main() {
 		AddItem(flexTop, 0, 3, true).
 		AddItem(bottom, 0, 2, false)
 
-	currentPane := 0 // 0 = left, 1 = right
+	// Instead of using a currentPane var and checking it in each area's SetInputCapture, 
+	// just let tview handle focus naturally and react to delete on whichever pane has focus.
+	// We track last delete time for both panes for double-tap.
+
+	var lastDelTimeLeft, lastDelTimeRight time.Time
+	const doubleTapThreshold = 400 * time.Millisecond
 
 	leftArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if currentPane != 0 {
-			return nil // Ignore input if not focused
-		}
 		switch event.Key() {
 		case tcell.KeyTAB:
-			currentPane = 1
 			app.SetFocus(rightArea)
 			return nil
 		case tcell.KeyCtrlC, tcell.KeyEscape:
 			app.Stop()
 			return nil
 		case tcell.KeyDelete:
-			leftArea.SetText("", true)
-			rightArea.SetText("", true)
-			updatePanels()
-			return nil
-		}
-		return event
-	})
-	rightArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if currentPane != 1 {
-			return nil // Ignore input if not focused
-		}
-		switch event.Key() {
-		case tcell.KeyTAB:
-			currentPane = 0
-			app.SetFocus(leftArea)
-			return nil
-		case tcell.KeyCtrlC, tcell.KeyEscape:
-			app.Stop()
-			return nil
-		case tcell.KeyDelete:
-			leftArea.SetText("", true)
-			rightArea.SetText("", true)
+			now := time.Now()
+			if now.Sub(lastDelTimeLeft) < doubleTapThreshold {
+				leftArea.SetText("", true)
+				rightArea.SetText("", true)
+			} else {
+				leftArea.SetText("", true)
+			}
+			lastDelTimeLeft = now
 			updatePanels()
 			return nil
 		}
 		return event
 	})
 
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	rightArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyTAB:
-			if currentPane == 0 {
-				currentPane = 1
-				app.SetFocus(rightArea)
-			} else {
-				currentPane = 0
-				app.SetFocus(leftArea)
-			}
+			app.SetFocus(leftArea)
 			return nil
 		case tcell.KeyCtrlC, tcell.KeyEscape:
 			app.Stop()
 			return nil
 		case tcell.KeyDelete:
-			leftArea.SetText("", true)
-			rightArea.SetText("", true)
+			now := time.Now()
+			if now.Sub(lastDelTimeRight) < doubleTapThreshold {
+				leftArea.SetText("", true)
+				rightArea.SetText("", true)
+			} else {
+				rightArea.SetText("", true)
+			}
+			lastDelTimeRight = now
 			updatePanels()
+			return nil
+		}
+		return event
+	})
+
+	// Global handler: TAB switches focus, Ctrl+C/Esc stops app, but delete is handled per pane.
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTAB:
+			if app.GetFocus() == leftArea {
+				app.SetFocus(rightArea)
+			} else {
+				app.SetFocus(leftArea)
+			}
+			return nil
+		case tcell.KeyCtrlC, tcell.KeyEscape:
+			app.Stop()
 			return nil
 		}
 		return event
